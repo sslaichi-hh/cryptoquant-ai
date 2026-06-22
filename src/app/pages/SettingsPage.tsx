@@ -27,6 +27,29 @@ export function SettingsPage({
   settingsSaving: boolean;
   handleSaveSettings: () => Promise<void>;
 }) {
+  const [sandbox, setSandbox] = React.useState(() => Boolean(autoConfig?.sandbox));
+  const [shadow, setShadow] = React.useState(() => Boolean(autoConfig?.shadowMode));
+
+  // Only sync from external autoConfig when the config identity changes to a
+  // non-null reference (e.g. it was loaded from the server); do NOT overwrite
+  // user selections that haven't been saved yet.
+  const autoConfigRef = React.useRef(autoConfig);
+  React.useEffect(() => {
+    if (autoConfig !== autoConfigRef.current) {
+      autoConfigRef.current = autoConfig;
+      if (autoConfig !== null) {
+        setSandbox(Boolean(autoConfig.sandbox));
+        setShadow(Boolean(autoConfig.shadowMode));
+      }
+    }
+  }, [autoConfig]);
+
+  // Keep autoConfig in sync with local toggles so handleSaveSettings sees the
+  // correct sandbox/shadow values when it reads autoTrading.autoConfig.
+  React.useEffect(() => {
+    setAutoConfig((current) => mergeConfig(current, { sandbox, shadowMode: shadow }));
+  }, [sandbox, shadow, setAutoConfig]);
+
   return (
     <div className="space-y-6">
       <SectionTitle title="系统设置" subtitle="凭据保存和自动交易运行参数。" />
@@ -81,10 +104,8 @@ export function SettingsPage({
               <input
                 type="checkbox"
                 className="h-4 w-4 accent-indigo-500"
-                checked={Boolean(autoConfig?.sandbox)}
-                onChange={(event) =>
-                  setAutoConfig((current) => mergeConfig(current, { sandbox: event.target.checked }))
-                }
+                checked={sandbox}
+                onChange={(event) => setSandbox(event.target.checked)}
               />
             </label>
             <label className="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
@@ -92,10 +113,8 @@ export function SettingsPage({
               <input
                 type="checkbox"
                 className="h-4 w-4 accent-indigo-500"
-                checked={Boolean(autoConfig?.shadowMode)}
-                onChange={(event) =>
-                  setAutoConfig((current) => mergeConfig(current, { shadowMode: event.target.checked }))
-                }
+                checked={shadow}
+                onChange={(event) => setShadow(event.target.checked)}
               />
             </label>
             {(
