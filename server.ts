@@ -1240,6 +1240,27 @@ function sanitizeAutoTradingLogEntry(line: unknown) {
   const prefixMatch = line.match(/^(\[[^\]]+\]\s*)/);
   const prefix = prefixMatch?.[1] || "";
   const message = line.slice(prefix.length);
+
+  // Fix corrupted Chinese text from encoding bugs (mojibake)
+  // Pattern: "寮€濮嬫壂鎻?(瀹氭椂" -> "开始扫描(定时"
+  const corruptedScanMatch = message.match(/^寮€濮嬫壂鎻?\((\S+),\s*(\S+)\)$/);
+  if (corruptedScanMatch) {
+    const trigger = corruptedScanMatch[1] === "鎵嬪姩" ? "手动" : "定时";
+    return `${prefix}开始扫描(${corruptedScanMatch[1] === "manual" ? "手动" : trigger}, ${corruptedScanMatch[2]})`;
+  }
+  if (message.includes("寮€濮嬫壂鎻?")) {
+    return `${prefix}开始扫描${message.replace(/寮€濮嬫壂鎻?/, "")}`;
+  }
+  if (message.includes("褰卞瓙鎸佷粨宸插紑浠?")) {
+    return `${prefix}影子持仓已经平仓${message.replace(/[^閉拷]*褰卞瓙鎸佷粨宸插紑浠?/, "")}`;
+  }
+  if (message.includes("褰卞瓙鎸佷粨宸插弽鎵?")) {
+    return `${prefix}影子持仓已经反转${message.replace(/[^閉拷]*褰卞瓙鎸佷粨宸插弽鎵?/, "")}`;
+  }
+  if (message.includes("褰卞瓙鎸佷粨宸插埛鏂?")) {
+    return `${prefix}影子持仓已经更新${message.replace(/[^閉拷]*褰卞瓙鎸佷粨宸插埛鏂?/, "")}`;
+  }
+
   const modeMatch = message.match(/\((DEMO|LIVE)\)/);
 
   if (message.includes("自动交易引擎已启动") && modeMatch) {
@@ -5265,7 +5286,7 @@ async function runAutoTradingCycle(config: AutoTradingConfig, trigger: "schedule
     trace: TraceDraft;
   }> = [];
 
-  pushAutoTradingLog(`寮€濮嬫壂鎻?(${trigger === "manual" ? "鎵嬪姩" : "瀹氭椂"}, ${macroGate.state})`);
+  pushAutoTradingLog(`开始扫描(${trigger === "manual" ? "手动" : "定时"}, ${macroGate.state})`);
 
   const scannedSymbolSet = new Set<string>();
   for (const profile of config.scanProfiles) {
@@ -5627,11 +5648,11 @@ async function runAutoTradingCycle(config: AutoTradingConfig, trigger: "schedule
       }));
       finalizeTrace(candidate.trace, "shadow_mode", reason);
       if (shadowResult.action === "opened") {
-        pushAutoTradingLog(`褰卞瓙鎸佷粨宸插紑浠?${candidate.symbol} ${side.toUpperCase()} ${candidate.strategyId}`);
+        pushAutoTradingLog(`影子持仓已经平仓 ${candidate.symbol} ${side.toUpperCase()} ${candidate.strategyId}`);
       } else if (shadowResult.action === "reversed") {
-        pushAutoTradingLog(`褰卞瓙鎸佷粨宸插弽鎵?${candidate.symbol} ${candidate.strategyId}锛屼笂绗旂泩浜?${Number(shadowResult.closed?.realized_pnl || 0).toFixed(2)} USDT`);
+        pushAutoTradingLog(`影子持仓已经反转 ${candidate.symbol} ${candidate.strategyId}, 盈亏: ${Number(shadowResult.closed?.realized_pnl || 0).toFixed(2)} USDT`);
       } else {
-        pushAutoTradingLog(`褰卞瓙鎸佷粨宸插埛鏂?${candidate.symbol} ${candidate.strategyId}`);
+        pushAutoTradingLog(`影子持仓已经更新 ${candidate.symbol} ${candidate.strategyId}`);
       }
       continue;
     }
@@ -6473,7 +6494,7 @@ async function startServer() {
       console.error(`[OKX Balance Error] Mode: ${isSandbox ? 'DEMO' : 'REAL'}`, errMsg);
       if (error.stack) console.error('[OKX Balance Error Stack]', error.stack);
       const isEnvError = errMsg.includes('50101') || errMsg.includes('APIKey does not match');
-      const hint = isEnvError ? " (璇锋鏌ュ綋鍓嶈处鎴锋ā寮忎笌 API Key 鏄惁鍖归厤锛涙ā鎷熺洏鍜屽疄鐩樺繀椤讳娇鐢ㄥ悇鑷嫭绔嬬殑鍑嵁)" : "";
+      const hint = isEnvError ? " (API Key 可能配置错误，请检查 API Key 是否正确或是否有足够权限)" : "";
       res.status(500).json({ error: `okx ${errMsg}${hint}` });
     }
   });
