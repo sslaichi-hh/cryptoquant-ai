@@ -25,7 +25,7 @@ export function SettingsPage({
   setAutoConfig: React.Dispatch<React.SetStateAction<AutoTradingConfig | null>>;
   configStatus: ConfigStatus | null;
   settingsSaving: boolean;
-  handleSaveSettings: () => Promise<void>;
+  handleSaveSettings: (opts?: { sandbox?: boolean; shadowMode?: boolean }) => Promise<void>;
 }) {
   const [sandbox, setSandbox] = React.useState(() => Boolean(autoConfig?.sandbox));
   const [shadow, setShadow] = React.useState(() => Boolean(autoConfig?.shadowMode));
@@ -178,7 +178,7 @@ export function SettingsPage({
             <button
               type="button"
               disabled={settingsSaving}
-              onClick={() => void handleSaveSettings()}
+              onClick={() => void handleSaveSettings({ sandbox, shadowMode: shadow })}
               className="rounded-2xl bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-indigo-900"
             >
               {settingsSaving ? "保存中..." : "保存配置"}
