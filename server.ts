@@ -1367,22 +1367,29 @@ async function loadAppStore() {
       };
     } else {
       // Render 免费实例无持久磁盘，从环境变量恢复配置
-      const envConfig = process.env.AUTO_TRADING_CONFIG;
-      if (envConfig) {
+      const envArenaMode = process.env.AUTO_TRADING_CONFIG;
+      if (envArenaMode !== undefined && envArenaMode !== null && envArenaMode.trim() !== "") {
         try {
-          const parsed = JSON.parse(envConfig);
-          if (parsed && typeof parsed === "object" && parsed.config) {
-            const cfg = sanitizeAutoTradingConfig(parsed.config);
-            if (cfg) {
-              appStore.autoTrading = {
-                ...createDefaultAutoTradingStore(),
-                config: cfg,
-              };
-              console.log("[OpsStore] Auto-trading config restored from AUTO_TRADING_CONFIG env var.");
-            }
+          const mode = parseInt(envArenaMode.trim(), 10);
+          if (!isNaN(mode) && mode >= 0 && mode <= 2) {
+            const cfg = sanitizeAutoTradingConfig({
+              sandbox: mode !== 2,       // 0,1 = sandbox; 2 = live
+              shadowMode: mode === 0,    // 0 = shadow; 1,2 = no shadow
+              scanProfilesVersion: 0,
+              scanProfiles: [],
+              strategyIds: [],
+              riskConfigSnapshot: {},
+            });
+            appStore.autoTrading = {
+              ...createDefaultAutoTradingStore(),
+              config: cfg,
+            };
+            console.log(`[OpsStore] Auto-trading mode restored from AUTO_TRADING_CONFIG=${mode} (${mode === 0 ? "影子" : mode === 1 ? "模拟盘" : "实盘"})`);
+          } else {
+            console.warn(`[OpsStore] Invalid AUTO_TRADING_CONFIG value: "${envArenaMode}". Expected 0 (影子), 1 (模拟盘), or 2 (实盘).`);
           }
         } catch (e) {
-          console.warn("[OpsStore] Failed to parse AUTO_TRADING_CONFIG env var:", e);
+          console.warn("[OpsStore] Failed to read AUTO_TRADING_CONFIG env var:", e);
         }
       }
     }
@@ -6070,7 +6077,7 @@ async function startServer() {
     const config = autoTradingEngine.config();
     res.json({
       config,
-      envVarValue: config ? JSON.stringify({ config }) : null,
+      envVarValue: config ? (config.shadowMode ? 0 : config.sandbox ? 1 : 2) : null,
       status: autoTradingEngine.status(),
     });
   });
@@ -6080,7 +6087,7 @@ async function startServer() {
       const payload = await autoTradingEngine.updateConfig(req.body || {});
       res.json({
         ...payload,
-        envVarValue: payload.config ? JSON.stringify({ config: payload.config }) : null,
+        envVarValue: payload.config ? (payload.config.shadowMode ? 0 : payload.config.sandbox ? 1 : 2) : null,
       });
     } catch (error: any) {
       res.status(error?.statusCode || 500).json(error?.payload || { error: error?.message || "Failed to update auto-trading config" });
