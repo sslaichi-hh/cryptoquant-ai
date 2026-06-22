@@ -4121,7 +4121,7 @@ async function submitOkxOrder(orderRequest: any, operator = "unknown") {
           const okxDetails = parseOkxErrorDetails(submitResponse);
           const errMsg = String(submitRow?.sMsg || submitResponse?.msg || "OKX order rejected");
           // If 51010 (account mode mismatch) and we haven't tried "cross" yet, retry
-          if (errMsg.includes("51010") && tdMode === "isolated")) {
+          if (errMsg.includes("51010") && tdMode === "isolated") {
             pushAutoTradingLog(`OKX 账号保证金模式不匹配，重试 cross 模式: ${displaySymbol}`);
             lastOrderError = { code: submitCode, msg: errMsg, details: okxDetails };
             continue;
