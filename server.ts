@@ -1365,6 +1365,26 @@ async function loadAppStore() {
         recentCycleSummaries: Array.isArray(parsed.autoTrading?.recentCycleSummaries) ? parsed.autoTrading.recentCycleSummaries.slice(0, 50) : [],
         decisionTraces: Array.isArray(parsed.autoTrading?.decisionTraces) ? parsed.autoTrading.decisionTraces.slice(0, 500) : [],
       };
+    } else {
+      // Render 免费实例无持久磁盘，从环境变量恢复配置
+      const envConfig = process.env.AUTO_TRADING_CONFIG;
+      if (envConfig) {
+        try {
+          const parsed = JSON.parse(envConfig);
+          if (parsed && typeof parsed === "object" && parsed.config) {
+            const cfg = sanitizeAutoTradingConfig(parsed.config);
+            if (cfg) {
+              appStore.autoTrading = {
+                ...createDefaultAutoTradingStore(),
+                config: cfg,
+              };
+              console.log("[OpsStore] Auto-trading config restored from AUTO_TRADING_CONFIG env var.");
+            }
+          }
+        } catch (e) {
+          console.warn("[OpsStore] Failed to parse AUTO_TRADING_CONFIG env var:", e);
+        }
+      }
     }
 
     const password = await getAdminPassword();
@@ -6047,8 +6067,10 @@ async function startServer() {
   });
 
   app.get("/api/auto-trading/config", (_req, res) => {
+    const config = autoTradingEngine.config();
     res.json({
-      config: autoTradingEngine.config(),
+      config,
+      envVarValue: config ? JSON.stringify({ config }) : null,
       status: autoTradingEngine.status(),
     });
   });
@@ -6056,7 +6078,10 @@ async function startServer() {
   app.put("/api/auto-trading/config", async (req, res) => {
     try {
       const payload = await autoTradingEngine.updateConfig(req.body || {});
-      res.json(payload);
+      res.json({
+        ...payload,
+        envVarValue: payload.config ? JSON.stringify({ config: payload.config }) : null,
+      });
     } catch (error: any) {
       res.status(error?.statusCode || 500).json(error?.payload || { error: error?.message || "Failed to update auto-trading config" });
     }
