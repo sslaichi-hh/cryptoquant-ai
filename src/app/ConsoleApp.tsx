@@ -3,7 +3,7 @@ import React from "react";
 import { apiFetch, postJson, type AppPage, type AuthSessionResponse, type ConfigStatus, type SessionUser } from "./api";
 import { AuditDrilldownDrawer } from "./components/AuditDrilldownDrawer";
 import { LoginScreen } from "./components/LoginScreen";
-import { PageLoading } from "./components/common";
+import { ErrorFallback, PageLoading } from "./components/common";
 import { useAuditData } from "./hooks/useAuditData";
 import { useAutoTradingRuntime } from "./hooks/useAutoTradingRuntime";
 import { useBacktest } from "./hooks/useBacktest";
@@ -486,7 +486,9 @@ export function ConsoleApp() {
             onLogout={() => void handleLogout()}
           />
 
-          <div className="p-6">{content}</div>
+          <div className="p-6">
+            <ErrorFallback>{content}</ErrorFallback>
+          </div>
         </main>
       </div>
 
