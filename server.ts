@@ -4081,39 +4081,79 @@ async function submitOkxOrder(orderRequest: any, operator = "unknown") {
       },
     });
 
-    const orderPayload: Record<string, any> = {
-      instId: resolvedMarket.instId,
-      tdMode: "isolated",
-      side,
-      ordType: type === "limit" ? "limit" : "market",
-      sz: formatToStepString(preciseAmount, resolvedMarket.lotSz),
-    };
-    if (clientOrderId) orderPayload.clOrdId = clientOrderId;
-    if (type === "limit") {
-      if (!Number.isFinite(Number(price))) {
-        throw requestError(400, "Limit order price is required", { error: "Limit order price is required" });
-      }
-      orderPayload.px = String(price);
-    }
-    const attachAlgoOrds = buildOkxAttachAlgoOrds({ tpPrice, slPrice });
-    if (attachAlgoOrds.length > 0) {
-      orderPayload.attachAlgoOrds = attachAlgoOrds;
-    }
-    orderDiagnostics = {
-      ...orderDiagnostics,
-      orderPayload,
-    };
+    // Try "isolated" first; if account is in cross-margin mode (51010), retry with "cross".
+    const tryModes = ["isolated", "cross"] as const;
+    let lastOrderError: any = null;
+    let submitResponse: any = null;
+    let submitRow: any = null;
+    let submitCode = "0";
 
-    const submitResponse: any = await retry(() => exchangeCall(() => (exchange as any).privatePostTradeOrder(orderPayload)));
-    const submitRow = unwrapOkxApiRow(submitResponse);
-    const submitCode = String(submitRow?.sCode ?? "0");
-    if (submitCode !== "0") {
-      const okxDetails = parseOkxErrorDetails(submitResponse);
-      throw requestError(400, submitRow?.sMsg || submitResponse?.msg || "OKX order rejected", {
-        error: submitRow?.sMsg || submitResponse?.msg || "OKX order rejected",
-        code: submitCode,
+    for (const tdMode of tryModes) {
+      const orderPayload: Record<string, any> = {
+        instId: resolvedMarket.instId,
+        tdMode,
+        side,
+        ordType: type === "limit" ? "limit" : "market",
+        sz: formatToStepString(preciseAmount, resolvedMarket.lotSz),
+      };
+      if (clientOrderId) orderPayload.clOrdId = clientOrderId;
+      if (type === "limit") {
+        if (!Number.isFinite(Number(price))) {
+          throw requestError(400, "Limit order price is required", { error: "Limit order price is required" });
+        }
+        orderPayload.px = String(price);
+      }
+      const attachAlgoOrds = buildOkxAttachAlgoOrds({ tpPrice, slPrice });
+      if (attachAlgoOrds.length > 0) {
+        orderPayload.attachAlgoOrds = attachAlgoOrds;
+      }
+      orderDiagnostics = {
         ...orderDiagnostics,
-        ...okxDetails,
+        orderPayload,
+        attemptedTdMode: tdMode,
+      };
+
+      try {
+        submitResponse = await retry(() => exchangeCall(() => (exchange as any).privatePostTradeOrder(orderPayload)));
+        submitRow = unwrapOkxApiRow(submitResponse);
+        submitCode = String(submitRow?.sCode ?? "0");
+        if (submitCode !== "0") {
+          const okxDetails = parseOkxErrorDetails(submitResponse);
+          const errMsg = String(submitRow?.sMsg || submitResponse?.msg || "OKX order rejected");
+          // If 51010 (account mode mismatch) and we haven't tried "cross" yet, retry
+          if (errMsg.includes("51010") && tdMode === "isolated")) {
+            pushAutoTradingLog(`OKX 账号保证金模式不匹配，重试 cross 模式: ${displaySymbol}`);
+            lastOrderError = { code: submitCode, msg: errMsg, details: okxDetails };
+            continue;
+          }
+          throw requestError(400, errMsg, {
+            error: errMsg,
+            code: submitCode,
+            ...orderDiagnostics,
+            ...okxDetails,
+          });
+        }
+        // Success
+        if (tdMode === "cross") {
+          pushAutoTradingLog(`OKX 账号使用 cross 保证金模式下单成功: ${displaySymbol}`);
+        }
+        break;
+      } catch (orderErr: any) {
+        if (orderErr?.message?.includes("51010") && tdMode === "isolated") {
+          pushAutoTradingLog(`OKX 账号保证金模式不匹配，重试 cross 模式: ${displaySymbol}`);
+          lastOrderError = orderErr;
+          continue;
+        }
+        throw orderErr; // re-throw if not a mode-mismatch error
+      }
+    }
+
+    if (submitCode !== "0") {
+      const err = lastOrderError || { code: submitCode, msg: "Unknown order error" };
+      throw requestError(400, `OKX order rejected (${err.code}): ${err.msg}`, {
+        error: `OKX order rejected (${err.code})`,
+        code: err.code,
+        ...orderDiagnostics,
       });
     }
     const orderInfo = attachAlgoOrds.length > 0
