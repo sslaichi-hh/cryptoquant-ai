@@ -107,6 +107,43 @@ export function Drawer({
   );
 }
 
+export class ErrorFallback extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("[ErrorFallback]", error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 rounded-3xl border border-zinc-800 bg-zinc-900/70 p-8 text-center">
+          <p className="text-sm font-medium text-rose-400">页面加载出错</p>
+          <p className="max-w-md text-xs text-zinc-500">{this.state.error.message}</p>
+          <button
+            type="button"
+            className="mt-2 rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+            onClick={() => this.setState({ error: null })}
+          >
+            重试
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function PageLoading({ title = "正在加载页面..." }: { title?: string }) {
   return (
     <div className={cardClassName("flex min-h-[240px] items-center justify-center text-sm text-zinc-400")}>
