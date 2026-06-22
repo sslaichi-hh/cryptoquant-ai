@@ -12,12 +12,10 @@ COPY . .
 # Build frontend (vite -> dist/)
 RUN npm run build
 
-# Create data directory for SQLite
-RUN mkdir -p data
-
 # Production environment
 ENV NODE_ENV=production
 EXPOSE 3000
 
+# Create data dir at runtime (Render may run as non-root user)
 # Start server in production mode
-CMD ["node", "scripts/run-server.mjs", "production"]
+CMD ["sh", "-c", "mkdir -p /app/data && exec node scripts/run-server.mjs production"]
