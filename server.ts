@@ -387,6 +387,32 @@ async function withAutoTradingDataRetry<T>(label: string, operation: () => Promi
 const publicMarketCache = new Map<string, { expiresAt: number; data: any }>();
 const fileWriteQueue = new Map<string, Promise<void>>();
 
+// --- Backtest async job store (avoid Render proxy timeout for long-running walk-forward) ---
+type BacktestJob = {
+  id: string;
+  status: "processing" | "done" | "error";
+  createdAt: number;
+  result?: any;
+  error?: string;
+};
+const backtestJobs = new Map<string, BacktestJob>();
+const BACKTEST_JOB_TTL_MS = 10 * 60 * 1000; // 10 min
+
+function createBacktestJob(): BacktestJob {
+  const id = `bt_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
+  const job: BacktestJob = { id, status: "processing", createdAt: Date.now() };
+  backtestJobs.set(id, job);
+  return job;
+}
+
+// Cleanup expired jobs every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - BACKTEST_JOB_TTL_MS;
+  for (const [id, job] of backtestJobs) {
+    if (job.createdAt < cutoff) backtestJobs.delete(id);
+  }
+}, 5 * 60 * 1000);
+
 async function cachedPublicMarket<T>(key: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T> {
   const now = Date.now();
   const cached = publicMarketCache.get(key);
@@ -6559,43 +6585,47 @@ async function startServer() {
     }
   });
 
-  app.post("/api/backtest/walk-forward", async (req, res) => {
+  // Walk-forward backtest — async processing to avoid Render proxy timeout (~100 s).
+  // POST returns a jobId immediately; the client polls GET /api/backtest/walk-forward/:jobId.
+
+  async function executeWalkForwardBacktest(job: BacktestJob, params: {
+    symbols: string[];
+    strategyIds: string[];
+    timeframe: string;
+    fetchLimit: number;
+    normalizedTrainDays: number;
+    normalizedValidationDays: number;
+    normalizedStepDays: number;
+    normalizedFeeRate: number;
+    normalizedInitialEquity: number;
+    normalizedMinTrainTrades: number;
+    normalizedRiskPerTradePct: number;
+    baseStopLoss: number;
+    baseTakeProfit: number;
+    requestedTrainBars: number;
+    requestedValidationBars: number;
+    fundingRatePer8h: number;
+  }) {
     const {
-      symbol,
-      symbols,
-      timeframe = "1h",
-      strategy = "trend-breakout",
-      strategyIds,
-      trainDays = 180,
-      validationDays = 30,
-      stepDays = 30,
-      period = 6000,
-      estimatedFeeRate = 0.05,
-      stopLoss = 2,
-      takeProfit = 6,
-      initialEquity = 10000,
-      minTrainTrades = 5,
-      riskPerTradePct = 0.5,
-    } = req.body || {};
+      symbols: targetSymbols,
+      strategyIds: targetStrategies,
+      timeframe,
+      fetchLimit,
+      normalizedTrainDays,
+      normalizedValidationDays,
+      normalizedStepDays,
+      normalizedFeeRate,
+      normalizedInitialEquity,
+      normalizedMinTrainTrades,
+      normalizedRiskPerTradePct,
+      baseStopLoss,
+      baseTakeProfit,
+      requestedTrainBars,
+      requestedValidationBars,
+      fundingRatePer8h,
+    } = params;
 
     try {
-      const targetSymbols = normalizeBacktestSymbols(symbols || symbol, "BTC-USDT", 3);
-      const targetStrategies = normalizeStrategyIds(strategyIds || strategy);
-      const normalizedInitialEquity = normalizeInitialEquity(initialEquity);
-      const normalizedTrainDays = normalizePositiveNumber(trainDays, 180, 1, 3650);
-      const normalizedValidationDays = normalizePositiveNumber(validationDays, 30, 1, 3650);
-      const normalizedStepDays = normalizePositiveNumber(stepDays, 30, 1, 3650);
-      const normalizedFeeRate = normalizePositiveNumber(estimatedFeeRate, 0.05, 0, 5);
-      const baseStopLoss = normalizePositiveNumber(stopLoss, 2, 0.1, 80);
-      const baseTakeProfit = normalizePositiveNumber(takeProfit, 6, 0.1, 200);
-      const normalizedMinTrainTrades = normalizeMinTrainTrades(minTrainTrades);
-      const normalizedRiskPerTradePct = normalizeRiskPerTradePct(riskPerTradePct);
-      const fundingRatePer8h = Number(req.body?.fundingRatePer8h || 0);
-      const barsPerDay = timeframeBarsPerDay(timeframe);
-      const requestedTrainBars = Math.max(60, Math.round(normalizedTrainDays * barsPerDay));
-      const requestedValidationBars = Math.max(30, Math.round(normalizedValidationDays * barsPerDay));
-      const requestedPeriod = normalizePositiveNumber(period, 6000, 120, 10000);
-      const fetchLimit = Math.min(10000, Math.max(requestedPeriod, requestedTrainBars + requestedValidationBars + 80));
       const parameterGrid = [
         { stopLoss: Number((baseStopLoss * 0.75).toFixed(4)), takeProfit: Number((baseTakeProfit * 0.67).toFixed(4)) },
         { stopLoss: baseStopLoss, takeProfit: baseTakeProfit },
@@ -6651,13 +6681,13 @@ async function startServer() {
             const trainSlice = ohlcv.slice(window.trainStart, window.trainEnd + 1);
             const { validationWarmup, tradeStartTime } = buildValidationSlice(ohlcv, window);
 
-            const trainResults = parameterGrid.map(params => ({
-              params,
+            const trainResults = parameterGrid.map((pg) => ({
+              params: pg,
               result: runBacktestOnOhlcv(trainSlice, {
                 symbol: ccxtSymbol,
                 strategy: strategyId,
-                stopLoss: params.stopLoss,
-                takeProfit: params.takeProfit,
+                stopLoss: pg.stopLoss,
+                takeProfit: pg.takeProfit,
                 estimatedFeeRate: normalizedFeeRate,
                 timeframe,
                 fundingRatePer8h,
@@ -6667,15 +6697,15 @@ async function startServer() {
                 enableHigherTimeframeTrendFilter: true,
               }),
             }));
-            const trainResultsWithStability = trainResults.map(item => {
-              const perturbations = [0.9, 1.1].flatMap(multiplier => [
+            const trainResultsWithStability = trainResults.map((item) => {
+              const perturbations = [0.9, 1.1].flatMap((multiplier) => [
                 { stopLoss: item.params.stopLoss * multiplier, takeProfit: item.params.takeProfit },
                 { stopLoss: item.params.stopLoss, takeProfit: item.params.takeProfit * multiplier },
-              ]).map(params => runBacktestOnOhlcv(trainSlice, {
+              ]).map((pg) => runBacktestOnOhlcv(trainSlice, {
                 symbol: ccxtSymbol,
                 strategy: strategyId,
-                stopLoss: params.stopLoss,
-                takeProfit: params.takeProfit,
+                stopLoss: pg.stopLoss,
+                takeProfit: pg.takeProfit,
                 estimatedFeeRate: normalizedFeeRate,
                 timeframe,
                 fundingRatePer8h,
@@ -6685,7 +6715,7 @@ async function startServer() {
                 enableHigherTimeframeTrendFilter: true,
               }));
               const score = calculateRobustSelectionScore(item.result, perturbations);
-              const worstPerturbReturn = Math.min(...perturbations.map(result => result.totalReturn));
+              const worstPerturbReturn = Math.min(...perturbations.map((r) => r.totalReturn));
               const trainTrades = Number(item.result.totalTrades || item.result.trades || 0);
               const insufficientTrades = trainTrades < normalizedMinTrainTrades;
               const failsRiskFloor = item.result.maxDrawdown > 25 || worstPerturbReturn < -8;
@@ -6724,14 +6754,14 @@ async function startServer() {
               tradeStartTime,
             });
 
-            const perturbations = [0.8, 1.2].flatMap(multiplier => [
+            const perturbations = [0.8, 1.2].flatMap((multiplier) => [
               { stopLoss: selected.params.stopLoss * multiplier, takeProfit: selected.params.takeProfit },
               { stopLoss: selected.params.stopLoss, takeProfit: selected.params.takeProfit * multiplier },
-            ]).map(params => runBacktestOnOhlcv(validationWarmup, {
+            ]).map((pg) => runBacktestOnOhlcv(validationWarmup, {
               symbol: ccxtSymbol,
               strategy: strategyId,
-              stopLoss: params.stopLoss,
-              takeProfit: params.takeProfit,
+              stopLoss: pg.stopLoss,
+              takeProfit: pg.takeProfit,
               estimatedFeeRate: normalizedFeeRate,
               timeframe,
               fundingRatePer8h,
@@ -6741,7 +6771,7 @@ async function startServer() {
               enableHigherTimeframeTrendFilter: true,
               tradeStartTime,
             }));
-            const perturbReturns = perturbations.map(item => Number(item.totalReturn || 0));
+            const perturbReturns = perturbations.map((r) => Number(r.totalReturn || 0));
             const worstPerturbReturn = Math.min(...perturbReturns);
             const validationTrades = Number(validation.totalTrades || validation.trades || 0);
             const fragile = worstPerturbReturn < validation.totalReturn - Math.max(5, Math.abs(validation.totalReturn) * 0.5);
@@ -6807,7 +6837,8 @@ async function startServer() {
       }
 
       if (!allRounds.length) {
-        return res.status(400).json({
+        job.status = "done";
+        job.result = {
           error: "Not enough OHLCV data for requested walk-forward windows",
           walkForward: true,
           initialEquity: normalizedInitialEquity,
@@ -6826,10 +6857,12 @@ async function startServer() {
           symbols: targetSymbols,
           bySymbol,
           factorAudit,
-        });
+        };
+        return;
       }
 
-      res.json({
+      job.status = "done";
+      job.result = {
         walkForward: true,
         dataMode: "strict_price_only",
         initialEquity: normalizedInitialEquity,
@@ -6847,7 +6880,7 @@ async function startServer() {
           requestedValidationBars,
         },
         strategies: targetStrategies,
-        symbols: targetSymbols.map(item => toCcxtSymbol(item)),
+        symbols: targetSymbols.map((s) => toCcxtSymbol(s)),
         rounds: allRounds,
         byStrategy: groupWalkForwardRounds(allRounds),
         bySymbol,
@@ -6860,10 +6893,88 @@ async function startServer() {
           signalExecution: "Signals use bar t-1 close and earlier history, then execute on bar t open.",
           nonPriceFactors: "Macro, on-chain, and news factors are disabled until point-in-time timestamps are available.",
         },
-      });
+      };
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      job.status = "error";
+      job.error = error?.message || String(error || "Unknown backtest error");
     }
+  }
+
+  app.post("/api/backtest/walk-forward", (req, res) => {
+    const {
+      symbol,
+      symbols,
+      timeframe = "1h",
+      strategy = "trend-breakout",
+      strategyIds,
+      trainDays = 180,
+      validationDays = 30,
+      stepDays = 30,
+      period = 6000,
+      estimatedFeeRate = 0.05,
+      stopLoss = 2,
+      takeProfit = 6,
+      initialEquity = 10000,
+      minTrainTrades = 5,
+      riskPerTradePct = 0.5,
+    } = req.body || {};
+
+    const targetSymbols = normalizeBacktestSymbols(symbols || symbol, "BTC-USDT", 3);
+    const targetStrategies = normalizeStrategyIds(strategyIds || strategy);
+    const normalizedInitialEquity = normalizeInitialEquity(initialEquity);
+    const normalizedTrainDays = normalizePositiveNumber(trainDays, 180, 1, 3650);
+    const normalizedValidationDays = normalizePositiveNumber(validationDays, 30, 1, 3650);
+    const normalizedStepDays = normalizePositiveNumber(stepDays, 30, 1, 3650);
+    const normalizedFeeRate = normalizePositiveNumber(estimatedFeeRate, 0.05, 0, 5);
+    const baseStopLoss = normalizePositiveNumber(stopLoss, 2, 0.1, 80);
+    const baseTakeProfit = normalizePositiveNumber(takeProfit, 6, 0.1, 200);
+    const normalizedMinTrainTrades = normalizeMinTrainTrades(minTrainTrades);
+    const normalizedRiskPerTradePct = normalizeRiskPerTradePct(riskPerTradePct);
+    const fundingRatePer8h = Number(req.body?.fundingRatePer8h || 0);
+    const barsPerDay = timeframeBarsPerDay(timeframe);
+    const requestedTrainBars = Math.max(60, Math.round(normalizedTrainDays * barsPerDay));
+    const requestedValidationBars = Math.max(30, Math.round(normalizedValidationDays * barsPerDay));
+    const requestedPeriod = normalizePositiveNumber(period, 6000, 120, 10000);
+    const fetchLimit = Math.min(10000, Math.max(requestedPeriod, requestedTrainBars + requestedValidationBars + 80));
+
+    const job = createBacktestJob();
+
+    // Fire-and-forget: run backtest in background
+    executeWalkForwardBacktest(job, {
+      symbols: targetSymbols,
+      strategyIds: targetStrategies,
+      timeframe,
+      fetchLimit,
+      normalizedTrainDays,
+      normalizedValidationDays,
+      normalizedStepDays,
+      normalizedFeeRate,
+      normalizedInitialEquity,
+      normalizedMinTrainTrades,
+      normalizedRiskPerTradePct,
+      baseStopLoss,
+      baseTakeProfit,
+      requestedTrainBars,
+      requestedValidationBars,
+      fundingRatePer8h,
+    });
+
+    res.status(202).json({ jobId: job.id, status: "processing" });
+  });
+
+  app.get("/api/backtest/walk-forward/:jobId", (req, res) => {
+    const { jobId } = req.params;
+    const job = backtestJobs.get(jobId);
+    if (!job) {
+      return res.status(404).json({ error: "Job not found or expired" });
+    }
+    if (job.status === "done") {
+      return res.json({ status: "done", result: job.result });
+    }
+    if (job.status === "error") {
+      return res.json({ status: "error", error: job.error });
+    }
+    res.json({ status: "processing" });
   });
 
   app.post("/api/ai/analyze", async (req, res) => {
@@ -7155,9 +7266,13 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`[Server] Listening on http://127.0.0.1:${PORT} (${process.env.NODE_ENV || "development"})`);
   });
+
+  // Disable Node.js HTTP timeout — backtest / long-running endpoints manage their own lifecycles.
+  // Render's proxy timeout is ~100 s, so long-running jobs must use async+ polling (see backtest route).
+  server.timeout = 0;
 }
 
 startServer().catch((error) => {

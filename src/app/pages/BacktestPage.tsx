@@ -233,6 +233,7 @@ export function BacktestPage({
   backtestResult,
   backtestLoading,
   backtestError,
+  backtestProgress,
   handleRunBacktest,
 }: {
   backtestForm: BacktestForm;
@@ -240,6 +241,7 @@ export function BacktestPage({
   backtestResult: WalkForwardBacktestResponse | null;
   backtestLoading: boolean;
   backtestError: string;
+  backtestProgress: { jobId: string; count: number } | null;
   handleRunBacktest: () => Promise<void>;
 }) {
   const resultStrategies = backtestResult?.strategies?.length ? backtestResult.strategies : backtestForm.strategyIds;
@@ -265,6 +267,8 @@ export function BacktestPage({
       return { ...current, symbol: safeSymbols[0], symbols: safeSymbols };
     });
   }, [setBacktestForm]);
+
+  const isRunning = backtestLoading || Boolean(backtestProgress);
 
   return (
     <div className="space-y-6">
@@ -338,14 +342,20 @@ export function BacktestPage({
           <button
             type="button"
             onClick={() => void handleRunBacktest()}
-            disabled={backtestLoading}
+            disabled={isRunning}
             className="rounded-2xl bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-indigo-900"
           >
-            {backtestLoading ? "验证中..." : "运行 Walk-forward 验证"}
+            {isRunning ? "验证中..." : "运行 Walk-forward 验证"}
           </button>
-          <span className="text-sm text-zinc-500">
-            默认初始资金：{formatUsd(backtestForm.initialEquity, 2)}，每笔风险 {formatPct(backtestForm.riskPerTradePct)}，训练少于 {backtestForm.minTrainTrades} 笔会标记为交易不足。
-          </span>
+          {backtestProgress ? (
+            <span className="text-sm text-amber-400 animate-pulse">
+              处理中（{backtestProgress.count}s）... 回测在后台运行，请耐心等待
+            </span>
+          ) : (
+            <span className="text-sm text-zinc-500">
+              默认初始资金：{formatUsd(backtestForm.initialEquity, 2)}，每笔风险 {formatPct(backtestForm.riskPerTradePct)}，训练少于 {backtestForm.minTrainTrades} 笔会标记为交易不足。
+            </span>
+          )}
         </div>
       </section>
 

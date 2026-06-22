@@ -532,6 +532,11 @@ export type WalkForwardBacktestResponse = {
   timeConsistency: Record<string, string>;
 };
 
+export type BacktestJobPollResponse =
+  | { status: "processing" }
+  | { status: "done"; result: WalkForwardBacktestResponse }
+  | { status: "error"; error: string };
+
 export type RuntimeMarketSnapshot = {
   ticker: Ticker | null;
   funding: Record<string, any> | null;
@@ -599,6 +604,10 @@ export async function postJson<T>(path: string, body: unknown, options: ApiOptio
     headers: { ...JSON_HEADERS, ...(options.headers || {}) },
     body: JSON.stringify(body),
   });
+}
+
+export async function getJson<T>(path: string, options: ApiOptions = {}) {
+  return apiFetch<T>(path, options);
 }
 
 export async function putJson<T>(path: string, body: unknown, options: ApiOptions = {}) {

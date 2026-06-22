@@ -402,6 +402,7 @@ export function ConsoleApp() {
             backtestResult={backtest.backtestResult}
             backtestLoading={backtest.backtestLoading}
             backtestError={backtest.backtestError}
+            backtestProgress={backtest.backtestProgress}
             handleRunBacktest={backtest.handleRunBacktest}
           />
         </React.Suspense>
