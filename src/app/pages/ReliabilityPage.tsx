@@ -23,7 +23,7 @@ export function ReliabilityPage({
         <MetricCard
           label="账户风控状态"
           value={riskStatusLabel(riskState)}
-          hint={riskState ? `${riskState.consecutiveStopLosses} / ${autoConfig?.riskConfigSnapshot.maxConsecutiveLosses || 0}` : undefined}
+          hint={riskState && autoConfig ? `${riskState.consecutiveStopLosses} / ${autoConfig.riskConfigSnapshot.maxConsecutiveLosses}` : undefined}
         />
         <MetricCard label="今日盈亏" value={formatUsd(riskState?.dailyPnL || 0)} trend={(riskState?.dailyPnL || 0) >= 0 ? "up" : "down"} />
         <MetricCard label="宏观门控" value={riskState?.macroGate || "—"} hint={`分数 ${formatPrice(riskState?.macroScore || 0, 2)}`} />
