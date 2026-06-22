@@ -290,10 +290,17 @@ export function ConsoleApp() {
     const merged = autoTrading.autoConfig ?? mergeConfig(null, { sandbox: false });
     setSettingsSaving(true);
     try {
-      await Promise.all([
-        postJson<{ ok: true }>("/api/config/credentials", credentialsForm, { token }),
-        autoTrading.saveAutoConfig(merged),
-      ]);
+      // Only send credentials to server if the user actually typed something.
+      // When creds come from env vars, the form is empty and we skip the POST
+      // to avoid accidentally overwriting the env-backed credential store.
+      const hasCredsInput = Object.values(credentialsForm).some(
+        (v) => typeof v === "string" && v.trim().length > 0
+      );
+      const saveOps: Promise<any>[] = [autoTrading.saveAutoConfig(merged)];
+      if (hasCredsInput) {
+        saveOps.push(postJson<{ ok: true }>("/api/config/credentials", credentialsForm, { token }));
+      }
+      await Promise.all(saveOps);
       await refreshConfigStatus();
       setToast({
         kind: "success",
