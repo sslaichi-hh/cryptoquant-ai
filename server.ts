@@ -3176,7 +3176,7 @@ function sanitizedCredentialStatus() {
   const storedAiProxy = hasAiCredentials(credentialStore.ai);
 
   return {
-    okx: envOkxLive || storedOkxLive,
+    okx: envOkxLive || storedOkxLive || envOkxDemo || storedOkxDemo,
     okxLive: envOkxLive || storedOkxLive,
     okxDemo: envOkxDemo || storedOkxDemo,
     ai: envZhipu || storedAiProxy,
