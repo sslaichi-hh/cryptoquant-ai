@@ -2552,7 +2552,7 @@ async function maintainOpenShadowOrders(config: AutoTradingConfig) {
     try {
       marketBundle = await fetchPublicMarketBundleWithAutoRetry(symbol, timeframe, 180);
     } catch (error: any) {
-      pushAutoTradingLog(`褰卞瓙鎸佷粨缁存姢澶辫触 ${symbol}: ${error?.message || String(error)}`);
+      pushAutoTradingLog(`影子持仓维护失败 ${symbol}: ${error?.message || String(error)}`);
       continue;
     }
 
@@ -2612,7 +2612,7 @@ async function maintainOpenShadowOrders(config: AutoTradingConfig) {
       const exitHit = determineShadowExitFromOhlcv(order, marketBundle.ohlcv);
       if (exitHit) {
         const closed = closeShadowOrderPosition(order, exitHit);
-        pushAutoTradingLog(`褰卞瓙鎸佷粨宸插钩浠?${closed.symbol} ${closed.strategy_id || "--"} ${closed.exit_reason || "take_profit"} ${Number(closed.realized_pnl || 0).toFixed(2)} USDT`);
+        pushAutoTradingLog(`影子持仓已平仓 ${closed.symbol} ${closed.strategy_id || "--"} ${closed.exit_reason || "take_profit"} ${Number(closed.realized_pnl || 0).toFixed(2)} USDT`);
         continue;
       }
 
@@ -2624,7 +2624,7 @@ async function maintainOpenShadowOrders(config: AutoTradingConfig) {
           bar: lastBar,
           closedAt: evaluatedAt,
         });
-        pushAutoTradingLog(`褰卞瓙鎸佷粨鍙嶅悜骞充粨 ${closed.symbol} ${closed.strategy_id || "--"} ${order.side} -> ${actionable.analysis.signal}`);
+        pushAutoTradingLog(`影子持仓反向平仓 ${closed.symbol} ${closed.strategy_id || "--"} ${order.side} -> ${actionable.analysis.signal}`);
         continue;
       }
 
@@ -2682,7 +2682,7 @@ async function hydrateLegacyShadowOrders() {
         timeframe,
         estimatedTimeframe: timeframe,
         isEstimated: 1,
-        estimationNote: "缂哄皯 entry/tp/sl 绛夊叧閿瓧娈碉紝鏃犳硶鍥炴斁浼扮畻",
+        estimationNote: "缺少 entry/tp/sl 等关键字段，无法回放估算",
       });
       continue;
     }
@@ -2711,7 +2711,7 @@ async function hydrateLegacyShadowOrders() {
           ...exitHit,
           isEstimated: true,
           estimatedTimeframe: timeframe,
-          estimationNote: "鍘嗗彶褰卞瓙鍗曟寜褰撳墠绯荤粺鍛ㄦ湡鍥炴斁浼扮畻",
+          estimationNote: "历史影子单按当前系统周期回放估算",
         });
         continue;
       }
@@ -2727,7 +2727,7 @@ async function hydrateLegacyShadowOrders() {
         lastEvaluatedAt: Number(lastBar?.[0] || Date.now()),
         isEstimated: 1,
         estimatedTimeframe: timeframe,
-        estimationNote: "鍘嗗彶褰卞瓙鍗曟寜褰撳墠绯荤粺鍛ㄦ湡鍥炴斁浼扮畻",
+        estimationNote: "历史影子单按当前系统周期回放估算",
         signal: signal,
       });
     } catch (error: any) {
@@ -2737,7 +2737,7 @@ async function hydrateLegacyShadowOrders() {
         timeframe,
         estimatedTimeframe: timeframe,
         isEstimated: 1,
-        estimationNote: `鍘嗗彶浼扮畻澶辫触: ${error?.message || String(error)}`,
+        estimationNote: `历史估算失败: ${error?.message || String(error)}`,
       });
     }
   }
@@ -5661,7 +5661,7 @@ class AutoTradingEngine {
     const config = sanitizeAutoTradingConfig(input);
     if (!config) throw requestError(400, "Invalid auto-trading config", { error: "Invalid auto-trading config" });
     updateAutoTradingStore({ config });
-    pushAutoTradingLog(`鑷姩浜ゆ槗閰嶇疆宸叉洿鏂?(${config.sandbox ? "DEMO" : "LIVE"}, shadow=${config.shadowMode ? "on" : "off"})`);
+    pushAutoTradingLog(`自动交易配置已更新 (${config.sandbox ? "DEMO" : "LIVE"}, shadow=${config.shadowMode ? "on" : "off"})`);
     return {
       config: serializeAutoTradingConfig(config),
       status: this.status(),
@@ -5694,7 +5694,7 @@ class AutoTradingEngine {
       engineStartedAt: Date.now(),
       nextRunAt: Date.now(),
     });
-    pushAutoTradingLog(`鑷姩浜ゆ槗寮曟搸宸插惎鍔?(${config.sandbox ? "DEMO" : "LIVE"})`);
+    pushAutoTradingLog(`自动交易引擎已启动 (${config.sandbox ? "DEMO" : "LIVE"})`);
     this.schedule(0);
     return this.status();
   }
