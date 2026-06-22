@@ -283,11 +283,12 @@ export function ConsoleApp() {
     }
   }, [token, setToast]);
 
-  const handleSaveSettings = React.useCallback(async () => {
-    // Use the current config from state directly — the SettingsPage checkboxes
-    // already update sandbox/shadowMode via setAutoConfig.  Re-deriving them
-    // here reads a potentially stale snapshot and discards the user's choice.
-    const merged = autoTrading.autoConfig ?? mergeConfig(null, { sandbox: false });
+  const handleSaveSettings = React.useCallback(async (opts?: { sandbox?: boolean; shadowMode?: boolean }) => {
+    // Always use the sandbox/shadowMode values the user sees on the SettingsPage,
+    // not autoTrading.autoConfig which may be stale (null or not-yet-synced).
+    const merged = autoTrading.autoConfig
+      ? { ...autoTrading.autoConfig, ...opts }
+      : mergeConfig(null, { sandbox: opts?.sandbox ?? false, shadowMode: opts?.shadowMode });
     setSettingsSaving(true);
     try {
       // Only send credentials to server if the user actually typed something.
