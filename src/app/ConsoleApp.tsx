@@ -284,10 +284,10 @@ export function ConsoleApp() {
   }, [token, setToast]);
 
   const handleSaveSettings = React.useCallback(async () => {
-    const merged = mergeConfig(autoTrading.autoConfig, {
-      sandbox: autoTrading.autoConfig?.sandbox ?? false,
-      shadowMode: autoTrading.autoConfig?.shadowMode ?? DEFAULT_AUTO_TRADING_RISK_CONFIG.shadowMode,
-    });
+    // Use the current config from state directly — the SettingsPage checkboxes
+    // already update sandbox/shadowMode via setAutoConfig.  Re-deriving them
+    // here reads a potentially stale snapshot and discards the user's choice.
+    const merged = autoTrading.autoConfig ?? mergeConfig(null, { sandbox: false });
     setSettingsSaving(true);
     try {
       await Promise.all([
