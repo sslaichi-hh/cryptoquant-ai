@@ -99,7 +99,7 @@ export function SettingsPage({
         <section className={cardClassName()}>
           <SectionTitle title="自动交易参数" />
           <div className="space-y-4">
-            <label className="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+            <div className="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
               <span className="text-sm text-zinc-300">使用模拟盘</span>
               <input
                 type="checkbox"
@@ -107,8 +107,8 @@ export function SettingsPage({
                 checked={sandbox}
                 onChange={(event) => setSandbox(event.target.checked)}
               />
-            </label>
-            <label className="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+            </div>
+            <div className="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
               <span className="text-sm text-zinc-300">影子模式</span>
               <input
                 type="checkbox"
@@ -116,7 +116,7 @@ export function SettingsPage({
                 checked={shadow}
                 onChange={(event) => setShadow(event.target.checked)}
               />
-            </label>
+            </div>
             {(
               [
                 ["autoTradeThreshold", "置信度门槛", 1],
@@ -153,7 +153,7 @@ export function SettingsPage({
                 {DEFAULT_STRATEGIES.map((strategy) => {
                   const active = autoConfig?.strategyIds.includes(strategy) ?? false;
                   return (
-                    <label key={strategy} className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                    <div key={strategy} className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
                       <input
                         type="checkbox"
                         className="h-4 w-4 accent-indigo-500"
@@ -169,7 +169,7 @@ export function SettingsPage({
                         }}
                       />
                       <span className="text-sm text-zinc-200">{strategy}</span>
-                    </label>
+                    </div>
                   );
                 })}
               </div>
