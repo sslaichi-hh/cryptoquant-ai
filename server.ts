@@ -5052,7 +5052,7 @@ async function runAutoTradingCycle(config: AutoTradingConfig, trigger: "schedule
 
   const normalizedRiskState = macroGate.state === "BLOCK_NEW_RISK"
     ? updatePersistentRiskState({
-        macroGate,
+        macroGate: macroGate.state,
         macroScore: macroRiskScore,
         newRiskBlocked: true,
         killSwitchActive: true,
@@ -5060,7 +5060,7 @@ async function runAutoTradingCycle(config: AutoTradingConfig, trigger: "schedule
         reason: macroGate.reason,
       })
     : updatePersistentRiskState({
-        macroGate,
+        macroGate: macroGate.state,
         macroScore: macroRiskScore,
       });
 
