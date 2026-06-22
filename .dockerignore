@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.gitignore
+.gitattributes
+README.md
+DISCLAIMER.md
+REQUISITE.md
+LICENSE
+.vscode
+*.bat
+*.md
+.env
+.env.*
+!.env.example
+data/*
+!data/.gitkeep

@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+coverage/
+.vite/
+
+# Runtime data and local secrets
+.env
+.env.*
+!.env.example
+data/
+output/
+logs/
+*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.enc.json
+
+# Browser/test tooling artifacts
+.playwright-cli/
+playwright-report/
+test-results/
+
+# OS/editor noise
+.DS_Store
+._*
+Thumbs.db
+
+# Python noise, kept for contributors using helper scripts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# npm cache/debug files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
