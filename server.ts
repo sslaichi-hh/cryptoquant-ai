@@ -3929,13 +3929,37 @@ async function submitOkxOrder(orderRequest: any, operator = "unknown") {
     let livePriceForSizing: number | null = null;
 
     try {
-      const leverageResponse: any = await retry(() => exchangeCall(() => (exchange as any).privatePostAccountSetLeverage({
-        instId: resolvedMarket.instId,
-        lever: String(leverage),
-        mgnMode: "isolated",
-      })));
+      // Try without posSide first (works for net-mode accounts).
+      // If the account is in hedge mode, OKX returns 51000 "Parameter posSide error"
+      // — in that case we retry with posSide set for both long and short.
+      const setLeverageForSide = async (posSide?: string) => {
+        const body: any = {
+          instId: resolvedMarket.instId,
+          lever: String(leverage),
+          mgnMode: "isolated",
+        };
+        if (posSide) body.posSide = posSide;
+        return exchangeCall(() => (exchange as any).privatePostAccountSetLeverage(body));
+      };
+
+      let leverageResponse: any;
+      try {
+        leverageResponse = await retry(() => setLeverageForSide());
+      } catch (firstError: any) {
+        // If error is 51000 (posSide required), retry for both sides
+        const errMsg = firstError?.message || String(firstError);
+        if (errMsg.includes("51000") || errMsg.includes("posSide")) {
+          pushAutoTradingLog(`OKX 账号为对冲模式，改为按 posSide 设置杠杆 ${leverage}x`);
+          await retry(() => setLeverageForSide("long"));
+          await retry(() => setLeverageForSide("short"));
+          leverageResponse = { code: "0", msg: "ok (hedge mode)" };
+        } else {
+          throw firstError;
+        }
+      }
+
       const leverageRow = unwrapOkxApiRow(leverageResponse);
-      const leverageCode = String(leverageRow?.sCode ?? "0");
+      const leverageCode = String(leverageRow?.sCode ?? leverageResponse?.code ?? "0");
       if (leverageCode !== "0") {
         throw new Error(leverageRow?.sMsg || leverageResponse?.msg || "Unknown leverage error");
       }
