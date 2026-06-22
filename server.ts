@@ -1559,7 +1559,7 @@ function updateAutoTradingStore(patch: Partial<AutoTradingStore>) {
 }
 
 function pushAutoTradingLog(message: string) {
-  const line = `[${new Date().toLocaleTimeString("zh-CN", { hour12: false })}] ${message}`;
+  const line = `[${new Date().toLocaleTimeString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" })}] ${message}`;
   const recentLogs = [line, ...appStore.autoTrading.recentLogs].slice(0, AUTO_TRADING_LOG_LIMIT);
   updateAutoTradingStore({ recentLogs });
   return line;
@@ -5865,6 +5865,15 @@ async function startServer() {
   const PORT = parseInt(process.env.PORT || "3000", 10);
 
   app.use(express.json());
+  // Ensure UTF-8 charset for all JSON responses (Render log viewer sometimes mangles Chinese text)
+  app.use((_req, res, next) => {
+    const originalJson = res.json.bind(res);
+    res.json = (body: any) => {
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      return originalJson(body);
+    };
+    next();
+  });
   app.use("/api", requireOperator);
   console.log("[Server] Middleware registered.");
 
