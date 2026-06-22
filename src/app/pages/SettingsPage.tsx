@@ -30,23 +30,27 @@ export function SettingsPage({
   const [sandbox, setSandbox] = React.useState(() => Boolean(autoConfig?.sandbox));
   const [shadow, setShadow] = React.useState(() => Boolean(autoConfig?.shadowMode));
 
-  // Only sync from external autoConfig when the config identity changes to a
-  // non-null reference (e.g. it was loaded from the server); do NOT overwrite
-  // user selections that haven't been saved yet.
-  const autoConfigRef = React.useRef(autoConfig);
+  // Sync sandbox/shadow from autoConfig ONLY on the first non-null value
+  // (when the app finishes its initial load).  After that, user toggles are
+  // the source of truth — we intentionally do NOT overwrite them when
+  // autoConfig changes later (e.g. from polling or from our own mergeConfig).
+  const syncedFromServer = React.useRef(false);
   React.useEffect(() => {
-    if (autoConfig !== autoConfigRef.current) {
-      autoConfigRef.current = autoConfig;
-      if (autoConfig !== null) {
-        setSandbox(Boolean(autoConfig.sandbox));
-        setShadow(Boolean(autoConfig.shadowMode));
-      }
+    if (!syncedFromServer.current && autoConfig !== null) {
+      syncedFromServer.current = true;
+      setSandbox(Boolean(autoConfig.sandbox));
+      setShadow(Boolean(autoConfig.shadowMode));
     }
   }, [autoConfig]);
 
   // Keep autoConfig in sync with local toggles so handleSaveSettings sees the
   // correct sandbox/shadow values when it reads autoTrading.autoConfig.
+  const didMount = React.useRef(false);
   React.useEffect(() => {
+    if (!didMount.current) {
+      didMount.current = true;
+      return; // skip the initial render to avoid creating an unnecessary autoConfig
+    }
     setAutoConfig((current) => mergeConfig(current, { sandbox, shadowMode: shadow }));
   }, [sandbox, shadow, setAutoConfig]);
 
