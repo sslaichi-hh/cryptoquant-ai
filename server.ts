@@ -4122,6 +4122,7 @@ async function submitOkxOrder(orderRequest: any, operator = "unknown") {
     let submitResponse: any = null;
     let submitRow: any = null;
     let submitCode = "0";
+    let attachAlgoOrds: any[] = [];
 
     for (const tdMode of tryModes) {
       const orderPayload: Record<string, any> = {
@@ -4140,7 +4141,7 @@ async function submitOkxOrder(orderRequest: any, operator = "unknown") {
         }
         orderPayload.px = String(price);
       }
-      const attachAlgoOrds = buildOkxAttachAlgoOrds({ tpPrice, slPrice });
+      attachAlgoOrds = buildOkxAttachAlgoOrds({ tpPrice, slPrice });
       if (attachAlgoOrds.length > 0) {
         orderPayload.attachAlgoOrds = attachAlgoOrds;
       }
