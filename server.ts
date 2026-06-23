@@ -3948,6 +3948,7 @@ async function submitOkxOrder(orderRequest: any, operator = "unknown") {
     let autoUpsizedToMinimum = false;
     let preciseAmount: number;
     let livePriceForSizing: number | null = null;
+    let isHedgeMode = false; // detected if OKX returns 51000 (posSide required)
 
     try {
       // OKX leverage setup:
@@ -3966,7 +3967,6 @@ async function submitOkxOrder(orderRequest: any, operator = "unknown") {
       };
 
       let leverageResponse: any;
-      let isHedgeMode = false; // detected if OKX returns 51000 (posSide required)
       try {
         // Try isolated first, then cross (ignore errors from cross — account may only support one)
         leverageResponse = await retry(() => setLeverageCall("isolated"));
