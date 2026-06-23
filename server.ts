@@ -1303,6 +1303,43 @@ function sanitizeAutoTradingLogEntry(line: unknown) {
     return `${prefix}已阻止：持仓数已达上限 ${blockedMatch[1]} 个活跃持仓，最大 ${blockedMatch[2]}`;
   }
 
+  // High priority translations
+  const blockMatch = message.match(/^Block: Macro gate blocked new risk: (.+)$/);
+  if (blockMatch) {
+    return `${prefix}已阻止：宏观风控拦截新开仓：${blockMatch[1]}`;
+  }
+
+  const cooldownMatch = message.match(/^Cooldown: (.+)$/);
+  if (cooldownMatch) {
+    return `${prefix}冷却中：${cooldownMatch[1]}`;
+  }
+
+  const sizingBlockedMatch = message.match(/^Position sizing blocked (.+)$/);
+  if (sizingBlockedMatch) {
+    return `${prefix}仓位计算阻止 ${sizingBlockedMatch[1]}`;
+  }
+
+  const corrMatch = message.match(/^Correlation adjustment applied to (.+)$/);
+  if (corrMatch) {
+    return `${prefix}相关性调整已应用于 ${corrMatch[1]}`;
+  }
+
+  const okxRetryMatch = message.match(/^OKX connection unavailable; auto-trading will retry in (\d+)s\.$/);
+  if (okxRetryMatch) {
+    return `${prefix}OKX 连接不可用，自动交易将在 ${okxRetryMatch[1]}s 后重试`;
+  }
+
+  // Medium priority translations
+  const orderSubmittedMatch = message.match(/^Live order submitted (.+) (BUY|SELL) \((.+)\)$/);
+  if (orderSubmittedMatch) {
+    return `${prefix}实盘下单已提交 ${orderSubmittedMatch[1]} ${orderSubmittedMatch[2]} (${orderSubmittedMatch[3]})`;
+  }
+
+  const orderFailedMatch = message.match(/^Live order failed (.+): (.+)$/);
+  if (orderFailedMatch) {
+    return `${prefix}实盘下单失败 ${orderFailedMatch[1]}：${orderFailedMatch[2]}`;
+  }
+
   return line;
 }
 
