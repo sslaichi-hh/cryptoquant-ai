@@ -1297,6 +1297,12 @@ function sanitizeAutoTradingLogEntry(line: unknown) {
     return `${prefix}自动交易配置已更新 (${configMatch[1]}, shadow=${configMatch[2]})`;
   }
 
+  // Translate "Blocked: Portfolio limit reached: X active positions, max Y"
+  const blockedMatch = message.match(/^Blocked: Portfolio limit reached: (\d+) active positions, max (\d+)$/);
+  if (blockedMatch) {
+    return `${prefix}已阻止：持仓数已达上限 ${blockedMatch[1]} 个活跃持仓，最大 ${blockedMatch[2]}`;
+  }
+
   return line;
 }
 
