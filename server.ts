@@ -6281,7 +6281,7 @@ async function startServer() {
 
   app.get("/api/auto-trading/logs", (req, res) => {
     const limit = Math.min(AUTO_TRADING_LOG_LIMIT, Math.max(1, Number(req.query.limit || 200)));
-    res.json(autoTradingEngine.logs(limit));
+    res.json(autoTradingEngine.logs(limit).map((entry: unknown) => sanitizeAutoTradingLogEntry(entry)));
   });
 
   app.get("/api/auto-trading/traces", (req, res) => {
