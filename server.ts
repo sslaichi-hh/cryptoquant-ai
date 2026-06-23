@@ -3950,29 +3950,37 @@ async function submitOkxOrder(orderRequest: any, operator = "unknown") {
     let livePriceForSizing: number | null = null;
 
     try {
-      // Try without posSide first (works for net-mode accounts).
-      // If the account is in hedge mode, OKX returns 51000 "Parameter posSide error"
-      // — in that case we retry with posSide set for both long and short.
-      const setLeverageForSide = async (posSide?: string) => {
+      // OKX leverage setup:
+      //   Net mode  : mgnMode=isolated|cross, no posSide
+      //   Hedge mode: mgnMode=isolated|cross, posSide=long + posSide=short both required
+      // We set leverage for both mgnMode values to tolerate accounts that switch modes.
+      // If 51000 is returned (posSide required), the account is in hedge mode.
+      const setLeverageCall = async (mgnMode: string, posSide?: string) => {
         const body: any = {
           instId: resolvedMarket.instId,
           lever: String(leverage),
-          mgnMode: "isolated",
+          mgnMode,
         };
         if (posSide) body.posSide = posSide;
         return exchangeCall(() => (exchange as any).privatePostAccountSetLeverage(body));
       };
 
       let leverageResponse: any;
+      let isHedgeMode = false; // detected if OKX returns 51000 (posSide required)
       try {
-        leverageResponse = await retry(() => setLeverageForSide());
+        // Try isolated first, then cross (ignore errors from cross — account may only support one)
+        leverageResponse = await retry(() => setLeverageCall("isolated"));
+        try { await retry(() => setLeverageCall("cross")); } catch { /* ignore */ }
       } catch (firstError: any) {
-        // If error is 51000 (posSide required), retry for both sides
+        // If error is 51000 (posSide required), account is in hedge mode
         const errMsg = firstError?.message || String(firstError);
         if (errMsg.includes("51000") || errMsg.includes("posSide")) {
+          isHedgeMode = true;
           pushAutoTradingLog(`OKX 账号为对冲模式，改为按 posSide 设置杠杆 ${leverage}x`);
-          await retry(() => setLeverageForSide("long"));
-          await retry(() => setLeverageForSide("short"));
+          await retry(() => setLeverageCall("isolated", "long"));
+          await retry(() => setLeverageCall("isolated", "short"));
+          try { await retry(() => setLeverageCall("cross", "long")); } catch { /* ignore */ }
+          try { await retry(() => setLeverageCall("cross", "short")); } catch { /* ignore */ }
           leverageResponse = { code: "0", msg: "ok (hedge mode)" };
         } else {
           throw firstError;
@@ -4102,8 +4110,14 @@ async function submitOkxOrder(orderRequest: any, operator = "unknown") {
       },
     });
 
-    // Try "isolated" first; if account is in cross-margin mode (51010), retry with "cross".
+    // OKX order mode detection:
+    // - Net mode accounts: tdMode="isolated" or "cross", no posSide needed
+    // - Hedge mode accounts: tdMode="isolated" or "cross" + posSide="long"/"short" required
+    // - 51010 = account mode mismatch (isolated vs cross) → retry with other tdMode
+    // - 51000 on leverage = hedge mode detected earlier (isHedgeMode=true)
     const tryModes = ["isolated", "cross"] as const;
+    // For hedge mode, posSide must match the intended direction
+    const hedgePosSide = isHedgeMode ? (side === "buy" ? "long" : "short") : undefined;
     let lastOrderError: any = null;
     let submitResponse: any = null;
     let submitRow: any = null;
@@ -4117,6 +4131,8 @@ async function submitOkxOrder(orderRequest: any, operator = "unknown") {
         ordType: type === "limit" ? "limit" : "market",
         sz: formatToStepString(preciseAmount, resolvedMarket.lotSz),
       };
+      // Hedge mode accounts require posSide ("long"/"short") on every order
+      if (hedgePosSide) orderPayload.posSide = hedgePosSide;
       if (clientOrderId) orderPayload.clOrdId = clientOrderId;
       if (type === "limit") {
         if (!Number.isFinite(Number(price))) {
@@ -4132,6 +4148,8 @@ async function submitOkxOrder(orderRequest: any, operator = "unknown") {
         ...orderDiagnostics,
         orderPayload,
         attemptedTdMode: tdMode,
+        isHedgeMode,
+        hedgePosSide,
       };
 
       try {
@@ -4157,6 +4175,9 @@ async function submitOkxOrder(orderRequest: any, operator = "unknown") {
         // Success
         if (tdMode === "cross") {
           pushAutoTradingLog(`OKX 账号使用 cross 保证金模式下单成功: ${displaySymbol}`);
+        }
+        if (isHedgeMode) {
+          pushAutoTradingLog(`OKX 对冲模式下单成功 (posSide=${hedgePosSide}): ${displaySymbol}`);
         }
         break;
       } catch (orderErr: any) {
